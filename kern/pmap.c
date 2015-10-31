@@ -98,7 +98,17 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
-
+    if(n == 0)
+        return nextfree;
+    result = ROUNDUP(n + nextfree, PGSIZE);
+    char *saved;
+    if((uint32_t)result < read_esp()) {//the test is wrong
+        saved = nextfree;
+        nextfree = result;
+        return saved;
+    }
+    panic("boot_alloc: out of memory\n");
+    //above is my code
 	return NULL;
 }
 
@@ -144,6 +154,9 @@ mem_init(void)
 	// array.  'npages' is the number of physical pages in memory.  Use memset
 	// to initialize all fields of each struct PageInfo to 0.
 	// Your code goes here:
+    pages = (struct PageInfo *)boot_alloc(npages * sizeof(struct PageInfo));
+    memset(pages, 0, npages * sizeof(struct PageInfo));
+    //above is my code
 
 
 	//////////////////////////////////////////////////////////////////////
@@ -248,11 +261,22 @@ page_init(void)
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
 	size_t i;
-	for (i = 0; i < npages; i++) {
-		pages[i].pp_ref = 0;
-		pages[i].pp_link = page_free_list;
-		page_free_list = &pages[i];
-	}
+    //below is my code
+    pages[0].pp_ref = 1;
+    pages[0].pp_link = pages+1;
+    for(i = 1; i < npages_basemem; i++) {
+        pages[i].pp_ref = 0;
+        pages[i].pp_link = &pages[i+1];
+    }
+    for(i = IOPHYSMEM / PGSIZE - 1; i < EXTPHYSMEM / PGSIZE; i++) {
+        pages[i].pp_ref = 1;
+    }
+    //above is my code
+	/* for (i = 1; i < npages; i++) { */
+	/* 	pages[i].pp_ref = 0; */
+	/* 	pages[i].pp_link = page_free_list; */
+	/* 	page_free_list = &pages[i]; */
+	/* } */
 }
 
 //
@@ -323,7 +347,20 @@ pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
 	// Fill this function in
-	return NULL;
+    // don't consider permission
+    assert(pgdir != NULL && va != NULL);
+    pde_t pde = pgdir[PDX(va)];
+    if(!(pde & PTE_P)) {
+        if(!create)
+            return NULL;
+        struct PageInfo *newpt = page_alloc(0);
+        if(!newpt)
+            return NULL;
+        pde = pgdir[PDX(va)] = page2pa(newpt) | PTE_P | PTE_U;
+    }
+    pte_t *pte = (pte_t *)(PTE_ADDR(pde) | PTX(va));
+
+    return pte;
 }
 
 //
