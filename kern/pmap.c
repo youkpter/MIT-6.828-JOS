@@ -124,7 +124,7 @@ boot_alloc(uint32_t n)
 // From UTOP to ULIM, the user is allowed to read but not write.
 // Above ULIM the user cannot read or write.
 void
-mem_init(void)
+mem_init(void) //kernel.asm f0101247
 {
 	uint32_t cr0;
 	size_t n;
@@ -322,7 +322,7 @@ page_alloc(int alloc_flags)
       return NULL;
     struct PageInfo *ret;
     ret = page_free_list;
-    page_free_list = ret->pp_link;
+    page_free_list = page_free_list->pp_link;
     if(alloc_flags & ALLOC_ZERO) {
         void *v = page2kva(ret);
         memset(v, 0, PGSIZE);
@@ -378,6 +378,7 @@ page_decref(struct PageInfo* pp)
 // Hint 2: the x86 MMU checks permission bits in both the page directory
 // and the page table, so it's safe to leave permissions in the page
 // directory more permissive than strictly necessary.
+// 上面的提示是有用的,即L397要加PTE_W属性,不然之后check的时候无法通过
 //
 // Hint 3: look at inc/mmu.h for useful macros that mainipulate page
 // table and page directory entries.
@@ -393,9 +394,10 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
         if(!create || (newpt = page_alloc(ALLOC_ZERO)) == NULL)
             return NULL;
         newpt->pp_ref = 1;
-        pde = pgdir[PDX(va)] = page2pa(newpt) | PTE_P | PTE_U;
+        pde = pgdir[PDX(va)] = page2pa(newpt) | PTE_W | PTE_P | PTE_U;
     }
-    ptep = KADDR(PTE_ADDR(pde) | PTX(va));
+    ptep = KADDR(PTE_ADDR(pde));
+    ptep = &ptep[PTX(va)];
     return ptep;
 }
 
@@ -485,7 +487,7 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
     pte_t *ptep = pgdir_walk(kern_pgdir, va, 0);
-    if(ptep == NULL)
+    if(ptep == NULL || !(*ptep & PTE_P))
       return NULL;
     if(pte_store)
       *pte_store = ptep;
@@ -736,12 +738,18 @@ check_va2pa(pde_t *pgdir, uintptr_t va)
 	pte_t *p;
 
 	pgdir = &pgdir[PDX(va)];
-	if (!(*pgdir & PTE_P))
-		return ~0;
+	if (!(*pgdir & PTE_P)) {
+      //  cprintf("*pgdir:%p\n", *pgdir);
+        return ~0;
+    }
 	p = (pte_t*) KADDR(PTE_ADDR(*pgdir));
-	if (!(p[PTX(va)] & PTE_P))
-		return ~0;
-	return PTE_ADDR(p[PTX(va)]);
+	if (!(p[PTX(va)] & PTE_P)) {
+     //   cprintf("p:%p\n", &p[PTX(va)]);
+        return ~0;
+    }
+    physaddr_t phy = PTE_ADDR(p[PTX(va)]);
+    //cprintf("va's pa:%p\n", phy);
+	return phy;
 }
 
 
