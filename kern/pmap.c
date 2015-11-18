@@ -423,7 +423,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
     size_t i;
     pte_t *ptep;
     for(i = 0; i < size; i += PGSIZE) {
-        ptep = pgdir_walk(kern_pgdir, (void *)va, 1);
+        ptep = pgdir_walk(pgdir, (void *)va, 1);
         if(!ptep)
             return;
         *ptep = pa | perm | PTE_P;
@@ -461,11 +461,11 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
-    pte_t *ptep = pgdir_walk(kern_pgdir, va, 1);
+    pte_t *ptep = pgdir_walk(pgdir, va, 1);
     if(ptep == NULL)
       return -E_NO_MEM;
     pp->pp_ref++;
-    page_remove(kern_pgdir, va);
+    page_remove(pgdir, va);
     *ptep = page2pa(pp) | perm | PTE_P;
 
 	return 0;
@@ -486,7 +486,7 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-    pte_t *ptep = pgdir_walk(kern_pgdir, va, 0);
+    pte_t *ptep = pgdir_walk(pgdir, va, 0);
     if(ptep == NULL || !(*ptep & PTE_P))
       return NULL;
     if(pte_store)
@@ -514,12 +514,12 @@ page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
     pte_t *ptep;
-    struct PageInfo *pp = page_lookup(kern_pgdir, va, &ptep);
+    struct PageInfo *pp = page_lookup(pgdir, va, &ptep);
     if(pp == NULL)
       return;
     page_decref(pp);
     *ptep = 0; //set pte to 0
-    tlb_invalidate(kern_pgdir, va);
+    tlb_invalidate(pgdir, va);
 }
 
 //
