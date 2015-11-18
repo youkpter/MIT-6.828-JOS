@@ -9,6 +9,30 @@
 #include <kern/env.h>
 #include <kern/syscall.h>
 
+extern void vector0(void);
+extern void vector1(void);
+extern void vector2(void);
+extern void vector3(void);
+extern void vector4(void);
+extern void vector5(void);
+extern void vector6(void);
+extern void vector7(void);
+extern void vector8(void);
+extern void vector9(void);
+extern void vector10(void);
+extern void vector11(void);
+extern void vector12(void);
+extern void vector13(void);
+extern void vector14(void);
+extern void vector15(void);
+extern void vector16(void);
+extern void vector17(void);
+extern void vector18(void);
+extern void vector19(void);
+
+extern void vector_syscall(void);
+extern void default_vector(void);
+
 static struct Taskstate ts;
 
 /* For debugging, so print_trapframe can distinguish between printing
@@ -63,9 +87,25 @@ void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
+    void(*vectors[20])(void) = {
+         vector0,  vector1,  vector2,  vector3,  vector4,
+         vector5,  vector6,  vector7,  vector8,  vector9,
+        vector10, vector11, vector12, vector13, vector14,
+        vector15, vector16, vector17, vector18, vector19
+    };
+
 
 	// LAB 3: Your code here.
+    int i;
+    for(i = 0; i < 20; i++)
+        SETGATE(idt[i], 1, GD_KT, vectors[i], 0);
+    //breakpoint exception can trigger from user-mode
+    SETGATE(idt[T_BRKPT], 1, GD_KT, vectors[T_BRKPT], 3);
+    for( ; i < 32; i++)
+        SETGATE(idt[i], 1, GD_KT, default_vector, 0);
 
+    //syscall vector
+    SETGATE(idt[T_SYSCALL], 1, GD_KT, vector_syscall, 3);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
@@ -143,6 +183,22 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+    if(tf->tf_trapno == T_PGFLT) {
+        page_fault_handler(tf);
+        return;
+    }
+    else if(tf->tf_trapno == T_BRKPT) {
+        monitor(tf);
+        return;
+    }
+    else if(tf->tf_trapno == T_SYSCALL) {
+        tf->tf_regs.reg_eax = syscall(
+                tf->tf_regs.reg_eax, tf->tf_regs.reg_edx,
+                tf->tf_regs.reg_ecx, tf->tf_regs.reg_ebx,
+                tf->tf_regs.reg_edi, tf->tf_regs.reg_esi
+                );
+        return;
+    }
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -204,6 +260,10 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+    if ((tf->tf_cs & 3) != 3) {
+        panic("kernel-mode page fault, va: %08x\n", fault_va);
+        return;
+    }
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.

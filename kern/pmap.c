@@ -95,7 +95,7 @@ boot_alloc(uint32_t n)
 		extern char end[];
 		nextfree = ROUNDUP((char *) end, PGSIZE);
         npages_free = npages - PADDR(nextfree) / PGSIZE;
-        cprintf("nextfree:%p, npages_free:%u\n", nextfree, npages_free);
+        //cprintf("nextfree:%p, npages_free:%u\n", nextfree, npages_free);
 	}
 
 	// Allocate a chunk large enough to hold 'n' bytes, then update
@@ -125,7 +125,7 @@ boot_alloc(uint32_t n)
 // From UTOP to ULIM, the user is allowed to read but not write.
 // Above ULIM the user cannot read or write.
 void
-mem_init(void) //kernel.asm f0101247
+mem_init(void)
 {
 	uint32_t cr0;
 	size_t n;
@@ -165,6 +165,7 @@ mem_init(void) //kernel.asm f0101247
 	//////////////////////////////////////////////////////////////////////
 	// Make 'envs' point to an array of size 'NENV' of 'struct Env'.
 	// LAB 3: Your code here.
+    envs = (struct Env *)boot_alloc(NENV * sizeof(struct Env));
 
 	//////////////////////////////////////////////////////////////////////
 	// Now that we've allocated the initial kernel data structures, we set
@@ -202,6 +203,13 @@ mem_init(void) //kernel.asm f0101247
 	//    - the new image at UENVS  -- kernel R, user R
 	//    - envs itself -- kernel RW, user NONE
 	// LAB 3: Your code here.
+    boot_map_region(kern_pgdir, UENVS,
+            ROUNDUP(sizeof(struct Env) * NENV, PGSIZE),
+            PADDR(envs), PTE_U);
+    //不知道为啥都没写下面这条语句
+    /* boot_map_region(kern_pgdir, (uintptr_t)envs, */
+    /*         ROUNDUP(sizeof(struct Env) * NENV, PGSIZE), */
+    /*         PADDR(envs), PTE_W); */
 
 	//////////////////////////////////////////////////////////////////////
 	// Use the physical memory that 'bootstack' refers to as the kernel
@@ -436,7 +444,7 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
     size_t i;
     pte_t *ptep;
     for(i = 0; i < size; i += PGSIZE) {
-        ptep = pgdir_walk(kern_pgdir, (void *)va, 1);
+        ptep = pgdir_walk(pgdir, (void *)va, 1);
         if(!ptep)
             return;
         *ptep = pa | perm | PTE_P;
@@ -474,11 +482,11 @@ int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
 	// Fill this function in
-    pte_t *ptep = pgdir_walk(kern_pgdir, va, 1);
+    pte_t *ptep = pgdir_walk(pgdir, va, 1);
     if(ptep == NULL)
       return -E_NO_MEM;
     pp->pp_ref++;
-    page_remove(kern_pgdir, va);
+    page_remove(pgdir, va);
     *ptep = page2pa(pp) | perm | PTE_P;
 
 	return 0;
@@ -499,7 +507,7 @@ struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
 	// Fill this function in
-    pte_t *ptep = pgdir_walk(kern_pgdir, va, 0);
+    pte_t *ptep = pgdir_walk(pgdir, va, 0);
     if(ptep == NULL || !(*ptep & PTE_P))
       return NULL;
     if(pte_store)
@@ -527,12 +535,12 @@ page_remove(pde_t *pgdir, void *va)
 {
 	// Fill this function in
     pte_t *ptep;
-    struct PageInfo *pp = page_lookup(kern_pgdir, va, &ptep);
+    struct PageInfo *pp = page_lookup(pgdir, va, &ptep);
     if(pp == NULL)
       return;
     page_decref(pp);
     *ptep = 0; //set pte to 0
-    tlb_invalidate(kern_pgdir, va);
+    tlb_invalidate(pgdir, va);
 }
 
 //
@@ -571,6 +579,24 @@ int
 user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 {
 	// LAB 3: Your code here.
+    pte_t *ptep;
+    uint32_t pte_perm_mask = PTE_P | PTE_W | PTE_U;
+    uintptr_t start_va = ROUNDDOWN((uintptr_t)va, PGSIZE); 
+    uintptr_t end_va = start_va + ROUNDUP(len, PGSIZE);
+
+    for( ; start_va < end_va; start_va += PGSIZE) {
+        ptep = pgdir_walk(env->env_pgdir, (void *)start_va, 0);
+        if ( (!ptep || !(*ptep & PTE_P)) ||
+             ((*ptep & PTE_U) < (perm & PTE_U)) || 
+             ((*ptep & PTE_W) < (perm & PTE_W))
+           ) {
+            //because start_va may be the rounddown addr
+            cprintf("va: %08x, start_va: %08x\n", va, start_va);
+            user_mem_check_addr = (uintptr_t)va > start_va ?
+                (uintptr_t)va : start_va;
+            return -E_FAULT;
+        }
+    }
 
 	return 0;
 }
