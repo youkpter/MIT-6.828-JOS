@@ -96,16 +96,18 @@ trap_init(void)
 
 
 	// LAB 3: Your code here.
+    // lec 8(l-interrupt.md) writes JOS's kernel is not re-entrant
+    // so all idt entries are interrupt gate
     int i;
     for(i = 0; i < 20; i++)
-        SETGATE(idt[i], 1, GD_KT, vectors[i], 0);
+        SETGATE(idt[i], 0, GD_KT, vectors[i], 0);
     //breakpoint exception can trigger from user-mode
-    SETGATE(idt[T_BRKPT], 1, GD_KT, vectors[T_BRKPT], 3);
+    SETGATE(idt[T_BRKPT], 0, GD_KT, vectors[T_BRKPT], 3);
     for( ; i < 32; i++)
-        SETGATE(idt[i], 1, GD_KT, default_vector, 0);
+        SETGATE(idt[i], 0, GD_KT, default_vector, 0);
 
     //syscall vector
-    SETGATE(idt[T_SYSCALL], 1, GD_KT, vector_syscall, 3);
+    SETGATE(idt[T_SYSCALL], 0, GD_KT, vector_syscall, 3);
 	// Per-CPU setup 
 	trap_init_percpu();
 }
