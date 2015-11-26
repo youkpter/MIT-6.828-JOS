@@ -224,8 +224,8 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
-    boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE,
-            PADDR(bootstack), PTE_W);
+    // boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE,
+    //        PADDR(bootstack), PTE_W);
 
 	//////////////////////////////////////////////////////////////////////
 	// Map all of physical memory at KERNBASE.
@@ -288,6 +288,11 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
+    int i;
+    for (i = 0; i < NCPU; i++) {
+        boot_map_region(kern_pgdir, KSTACKTOP-i*(KSTKSIZE+KSTKGAP)-KSTKSIZE,
+                KSTKSIZE, PADDR(&percpu_kstacks[i]), PTE_W);
+    }
 
 }
 
@@ -333,21 +338,30 @@ page_init(void)
     pages[0].pp_ref = 1;
     pages[0].pp_link = NULL;
     //2)
-    for(i = 1; i < npages_basemem; i++) {
-        pages[i].pp_ref = 0;
-        pages[i].pp_link = page_free_list;
-        page_free_list = &pages[i];
+    for(i = 1; i < PGNUM(MPENTRY_PADDR); i++) {
+            pages[i].pp_ref = 0;
+            pages[i].pp_link = page_free_list;
+            page_free_list = &pages[i];
     }
-    //3)
+    // physical page at MPENTRY_PADDR
+    pages[i].pp_ref = 1;
+    pages[i].pp_link = NULL;
+    ++i;// go to the page behind MPENTRY_PADDR
+    for( ; i < npages_basemem; i++) {
+            pages[i].pp_ref = 0;
+            pages[i].pp_link = page_free_list;
+            page_free_list = &pages[i];
+    }
+    //3) I/O hole
     for( ; i < PGNUM(EXTPHYSMEM); i++) {
         pages[i].pp_ref = 1;
-        //pages[i].pp_link = NULL; L160已经将整个pages[]清零了
+        pages[i].pp_link = NULL;
     }
     //4) which is used in extended memory
-    //including kernel text & data(all before end) & pgdir & pages
+    //including kernel text & data & pgdir & pages[] & envs[]
     for( ; i < PGNUM(PADDR(boot_alloc(0))); i++) {
         pages[i].pp_ref = 1;
-        //pages[i].pp_link = NULL;
+        pages[i].pp_link = NULL;
     }
     //4) which is not used in extended memory
     for( ; i < npages; i++) {
@@ -621,7 +635,14 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+    size = ROUNDUP(size, PGSIZE);
+    void *ret = (void *)base;
+    if (base + size > MMIOLIM)
+        panic("mmio_map_region: size is too large\n");
+    boot_map_region(kern_pgdir, base, size, ROUNDDOWN(pa, PGSIZE),
+            PTE_PCD | PTE_PWT | PTE_W);
+    base += size;
+    return ret;
 }
 
 static uintptr_t user_mem_check_addr;
@@ -656,11 +677,11 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
     for( ; start_va < end_va; start_va += PGSIZE) {
         ptep = pgdir_walk(env->env_pgdir, (void *)start_va, 0);
         if ( (!ptep || !(*ptep & PTE_P)) ||
-             ((*ptep & PTE_U) < (perm & PTE_U)) || 
+             ((*ptep & PTE_U) < (perm & PTE_U)) ||
              ((*ptep & PTE_W) < (perm & PTE_W))
            ) {
-            //because start_va may be the rounddown addr
-            cprintf("va: %08x, start_va: %08x\n", va, start_va);
+            //start_va is the round down of va
+            //may be less than the initial va
             user_mem_check_addr = (uintptr_t)va > start_va ?
                 (uintptr_t)va : start_va;
             return -E_FAULT;
