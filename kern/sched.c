@@ -29,6 +29,19 @@ sched_yield(void)
 	// below to halt the cpu.
 
 	// LAB 4: Your code here.
+    int next = (!curenv) ? -1 : ENVX(curenv->env_id);
+    if (curenv && curenv->env_status == ENV_RUNNING)
+        curenv->env_status = ENV_RUNNABLE;
+    int i;
+    for(i = 0; i < NENV; i++) {
+        next = (next + 1) % NENV;
+        if (envs[next].env_status == ENV_RUNNABLE)
+        {
+            /* cprintf("sched.c: scheduing %x to run\n", next); */
+            env_run(&envs[next]);
+            /* cprintf("come back to envid:%x\n", curenv-) */
+        }
+    }
 
 	// sched_halt never returns
 	sched_halt();
