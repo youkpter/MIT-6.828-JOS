@@ -416,6 +416,7 @@ page_free(struct PageInfo *pp)
         panic("pp_ref should be 0.\n");
     pp->pp_link = page_free_list;
     page_free_list = pp;
+    //cprintf("page_free %x\n", PGNUM(page2pa(pp)));
 }
 
 //

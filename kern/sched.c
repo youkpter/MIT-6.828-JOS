@@ -37,9 +37,8 @@ sched_yield(void)
         next = (next + 1) % NENV;
         if (envs[next].env_status == ENV_RUNNABLE)
         {
-            /* cprintf("sched.c: scheduing %x to run\n", next); */
+            /* cprintf("sched.c: run %x\n", envs[next].env_id); */
             env_run(&envs[next]);
-            /* cprintf("come back to envid:%x\n", curenv-) */
         }
     }
 
