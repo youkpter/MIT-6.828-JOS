@@ -69,30 +69,25 @@ duppage(envid_t envid, unsigned pn)
 	// LAB 4: Your code here.
     //cprintf("debug:lib/fork/duppage:envid:%8x, pn: %8x\n", envid, pn);
     // I first use the next line to get PTE permissions, but it doesn't work
-    // because sys_page_map's(below) third parameter must be less than
-    // PTE_SYSCALL(这是干嘛用的)
-    // 难道Dirty位不应该复制吗?
+    // because sys_page_map's(below) third parameter must not more than
+    // PTE_SYSCALL
     //uint32_t pte_perm = uvpt[pn] & 0xFFF;
     uint32_t pte_perm = uvpt[pn] & PTE_SYSCALL;
+    uint32_t old_perm = pte_perm;
     void *va = (void *)(pn * PGSIZE);
-    /* cprintf("debug original pte_perm:%x\n", pte_perm); */
     if (pte_perm & PTE_W || pte_perm & PTE_COW) {
-        //之前一直直接对*ptep进行设置,还总找不到出错原因
-        //尝试在各个地方使用cprintf输出信息,一步步把范围缩小
-        //中途也有使用gdb单步调试,但是在env_run()的unlock_kernel处总是出问题
-        //要么内核直接panic,要么就是执行异常(重复执行env_pop_tf,有时候好不容易执
-        //行到了forktree程序,居然发现和obj/user/forktree.asm对不上号
-        //花了一下午,没办法只有使用cprintf,一步步定位,才猛然发现我居然直接对页表进行操作
         pte_perm |= PTE_COW;
         pte_perm &= ~PTE_W;
         /* cprintf("duppage: va(%08x) set PTE_COW:%0x\n", va, pte_perm); */
     }
-    //cprintf("debug duppage: va: %x, pte_perm: %x\n", va, pte_perm);
+    // Be careful! don't exchange the next two invocations of
+    // sys_page_map. Especially, when va belongs to stack memory
+    // if you do, the child would get a corrupted stack
     r = sys_page_map(0, va, envid, va, pte_perm);
     if (r < 0)
         panic("duppage: %e\n", r);
-    r = sys_page_map(0, va, 0, va, pte_perm);
-    //cprintf("duppage is returnning, va: %08x, pte_perm: %x\n", va, uvpt[pn] & 0xFFF);
+    if (pte_perm != old_perm)
+        sys_page_map(0, va, 0, va, pte_perm);
 	return 0;
 }
 
@@ -127,23 +122,11 @@ fork(void)
         if (ret < 0)
             panic("fork: sys_page_alloc: %e\n", ret);
         // copy address space
-        duppage(envid, (USTACKTOP - PGSIZE) / PGSIZE);
-        /* cprintf("there should have some pgfaults\n"); */
-        // 从UTEXT开始,我只拷贝那些父进程中已存在的页的映射(PTE_P),一旦遇到
-        // 无映射的页就终止
-        // 所以上面USTACK页的映射和下面的循环要分开
         unsigned i;
-        for (i = (UTEXT) / PGSIZE; i < (USTACKTOP - PGSIZE) / PGSIZE; i++)
-            if(uvpt[i] & PTE_P) {
-                /* cprintf("duppage %x\n", i * PGSIZE); */
-                duppage(envid, i);
-                //cprintf("there were some pgfaults above\n");
-            } else
-                break;
+        for (i = UTEXT; i < UXSTACKTOP - PGSIZE; i += PGSIZE)
+            if((uvpd[PDX(i)] & PTE_P) && (uvpt[PGNUM(i)] & PTE_P))
+                duppage(envid, PGNUM(i));
 
-        //在trap.c中查看tp_eip的值才发现和pfentry.S中的_pgfaul_upcall不同
-        //再比较发现eip等于fork中的pgfault,之后发现不能用这个函数注册用户级
-        //的page fault handler,要直接注册lib/pfentry.S中的_pgfault_upcall
         extern void _pgfault_upcall(void);
         //cprintf("_pgfault_upcall:%08x\n", _pgfault_upcall);
         sys_env_set_pgfault_upcall(envid, _pgfault_upcall);
@@ -154,7 +137,6 @@ fork(void)
         return envid;
     } else {
         thisenv = &envs[ENVX(sys_getenvid())];
-        //cprintf("child(%08x) return\n", thisenv->env_id);
         return 0;
     }
 }
