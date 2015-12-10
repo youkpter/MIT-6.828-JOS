@@ -122,3 +122,15 @@ sys_time_msec(void)
 {
 	return (unsigned int) syscall(SYS_time_msec, 0, 0, 0, 0, 0, 0);
 }
+
+int
+sys_pkt_try_send(const void *buf, size_t len)
+{
+    return syscall(SYS_pkt_try_send, 0, (uint32_t)buf, len, 0, 0, 0);
+}
+
+int
+sys_pkt_recv(void *dst)
+{
+    return syscall(SYS_pkt_recv, 0, (uint32_t)dst, 0, 0, 0, 0);
+}

@@ -448,7 +448,8 @@ page_decref(struct PageInfo* pp)
 // Hint 2: the x86 MMU checks permission bits in both the page directory
 // and the page table, so it's safe to leave permissions in the page
 // directory more permissive than strictly necessary.
-// 上面的提示是有用的,即L397要加PTE_W属性,不然之后check的时候无法通过
+// 上面的提示是有用的,即新分配一个页表页时,对应的页目录项要加PTE_W属性,不然之后
+// check无法通过
 //
 // Hint 3: look at inc/mmu.h for useful macros that mainipulate page
 // table and page directory entries.
@@ -672,7 +673,7 @@ user_mem_check(struct Env *env, const void *va, size_t len, int perm)
 	// LAB 3: Your code here.
     pte_t *ptep;
     uint32_t pte_perm_mask = PTE_P | PTE_W | PTE_U;
-    uintptr_t start_va = ROUNDDOWN((uintptr_t)va, PGSIZE); 
+    uintptr_t start_va = ROUNDDOWN((uintptr_t)va, PGSIZE);
     uintptr_t end_va = start_va + ROUNDUP(len, PGSIZE);
 
     for( ; start_va < end_va; start_va += PGSIZE) {

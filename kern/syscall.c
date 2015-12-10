@@ -12,6 +12,7 @@
 #include <kern/console.h>
 #include <kern/sched.h>
 #include <kern/time.h>
+#include <kern/e1000.h>
 
 // Print a string to the system console.
 // The string is exactly 'len' characters long.
@@ -391,7 +392,34 @@ static int
 sys_time_msec(void)
 {
 	// LAB 6: Your code here.
-	panic("sys_time_msec not implemented");
+    return time_msec();
+}
+
+// Try to send a packet from 'buf'.
+// The size is 'size' bytes long.
+// Destroy the environment on memory errors.
+// Returns 0 on success, < 0 on error. Errors are:
+//  -E_INVAL if 'len' > PACKET_LEN,
+//  -E_AGAIN if the transmit queue is full.
+static int
+sys_pkt_try_send(const void *buf, size_t len)
+{
+    user_mem_assert(curenv, buf, len, PTE_U);
+    if (len > TX_BSIZE)
+        return -E_INVAL;
+    return pkt_try_send(buf, len);
+}
+
+// Receive a packet into the buffer starting at 'dst'
+// Caller must insure the size of buffer not less than the
+// largest packet size(RX_BSIZE)
+// Returns packet's length
+//  Or -E_AGAIN if the receive queue is empty
+static int
+sys_pkt_recv(void *dst)
+{
+    user_mem_assert(curenv, dst, RX_BSIZE, PTE_U | PTE_W);
+    return pkt_recv(dst);
 }
 
 // Dispatches to the correct kernel function, passing the arguments.
@@ -447,7 +475,17 @@ syscall(uint32_t syscallno, uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, 
         case SYS_ipc_recv:
             ret = sys_ipc_recv((void *)a1);
             break;
+        case SYS_time_msec:
+            ret = sys_time_msec();
+            break;
+        case SYS_pkt_try_send:
+            ret = sys_pkt_try_send((void *)a1, (size_t)a2);
+            break;
+        case SYS_pkt_recv:
+            ret = sys_pkt_recv((void *)a1);
+            break;
         default:
+            cprintf("unknown syscall num\n");
             ret = -E_INVAL;
     }
     return ret;

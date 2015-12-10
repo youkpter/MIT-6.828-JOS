@@ -60,6 +60,8 @@ int	sys_page_unmap(envid_t env, void *pg);
 int	sys_ipc_try_send(envid_t to_env, uint32_t value, void *pg, int perm);
 int	sys_ipc_recv(void *rcv_pg);
 unsigned int sys_time_msec(void);
+int sys_pkt_try_send(const void *buf, size_t len);
+int sys_pkt_recv(void *buf);
 
 // This must be inlined.  Exercise for reader: why?
 static __inline envid_t __attribute__((always_inline))
@@ -78,6 +80,10 @@ sys_exofork(void)
 void	ipc_send(envid_t to_env, uint32_t value, void *pg, int perm);
 int32_t ipc_recv(envid_t *from_env_store, void *pg, int *perm_store);
 envid_t	ipc_find_env(enum EnvType type);
+
+// pkt.c
+void pkt_send(const void *buf, size_t len);
+int pkt_recv(void *dst);
 
 // fork.c
 #define	PTE_SHARE	0x400

@@ -28,7 +28,7 @@ pgfault(struct UTrapframe *utf)
 	// LAB 4: Your code here.
     uint32_t pte_perm = uvpt[PGNUM(addr)] & PTE_SYSCALL;
     if (!((err & FEC_WR) && (pte_perm & PTE_COW)))
-        panic("pgfault: va: %08x\n", addr);
+        panic("pgfault: va: %08x, eip: %08x\n", addr, utf->utf_eip);
 
 	// Allocate a new page, map it at a temporary location (PFTEMP),
 	// copy the data from the old page to the new page, then move the new
